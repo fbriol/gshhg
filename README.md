@@ -65,11 +65,14 @@ The software uses GSHHG shorelines to perform the calculations. You must downloa
 
 > This library has been tested with GSHHG data version 2.3.7.
 
+## Initialization.
 The first step is to create an instance that will load the shorelines into memory.
 
-    import gsshg
+```python
+import gsshg
 
-    shorelines = gsshg("/Users/anonymous/Downloads/gshhg-shp-2.3.7/GSHHS_shp", resolution="full")
+shorelines = gsshg("/Users/anonymous/Downloads/gshhg-shp-2.3.7/GSHHS_shp")
+```
 
 The contructor accepts the following options:    
 * `resolution`, specifies the geographic resolution to use:
@@ -88,7 +91,83 @@ The contructor accepts the following options:
   * 6: boundary between Antarctica grounding-line and ocean.
   
   If `levels` is not set, all levels are loaded.
-
 * `bbox`, a tuple of 4 floats (minimum longitude, minimum latitude, maximum
   longitude, and maximum latitude) defines the geographical area to be
   processed. By default, the whole data read.
+
+## Display
+
+Once loaded in memory, it's possible to view the polygons loaded in memory. This
+is useful for debugging possible problems with the handled data.
+
+```python
+instance.to_svg("[intermediate.svg](docs/intermediate.svg)")
+```
+
+## Land/sea mask
+For a set of coordinates expressed in degrees, it is possible to calculate the
+value of the land/sea mask:
+
+```python
+import numpy
+
+
+lon = np.random.uniform(-180.0, 180.0, 1000)
+lat = np.random.uniform(-90.0, 90.0, 1000)
+mask = instance(lon, lat, num_threads=0)
+```
+
+The variable `mask` contains values from 1 to 6 corresponding to different
+hierarchical levels loaded or 0 if the data are located on ocean.
+
+## Distance to the nearest shorelines
+
+For a set of coordinates expressed in degrees, it is possible to calculate the
+distance to the nearest coast point:
+
+```python
+distance = instance.distance_to_nearest(lon, lat, num_threads=0)
+```
+
+You can define a strategy to calculate distances in different ways between
+points using the `strategy` option:
+* [andoyer](https://www.boost.org/doc/libs/1_75_0/boost/geometry/strategies/geographic/distance_andoyer.hpp)
+* [haversine](https://en.wikipedia.org/wiki/Haversine_formula)
+* [thomas](https://www.boost.org/doc/libs/1_75_0/boost/geometry/strategies/geographic/distance_thomas.hpp)
+* [vincenty](https://en.wikipedia.org/wiki/Vincenty%27s_formulae)
+
+## Mapping land/sea mask
+
+It's possible to create a grid representing the land/sea mask:
+
+```python
+ds = shorelines.grid_mapping_mask(step=0.25)
+```
+
+`ds` is a xarray dataset describing the mask created. The mask is a Dask array
+that will have to be evaluated to be visualized, for example, or saved in a
+netCDF file.
+
+```python
+ds.to_netcdf("/tmp/test.nc",
+             encoding=dict(mask=dict(_FillValue=None)))
+```
+## Mapping distance to the nearest shorelines
+
+It's possible to create a grid representing the land/sea mask:
+
+```python
+ds = instance.grid_mapping_distance_to_nearest(
+    step=0.25,
+    strategy="andoyer",
+    num_threads=0)
+```
+
+`ds` is a xarray dataset describing the distance calculated. The distance is a Dask
+array that will have to be evaluated to be visualized, for example, or saved in
+a netCDF file.
+
+```python
+ds.to_netcdf("/tmp/test.nc",
+             encoding=dict(distance=dict(_FillValue=None)))
+```

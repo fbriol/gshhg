@@ -88,10 +88,10 @@ def test_distance_to_nearest():
 
     assert np.all(d1 == d2)
 
-    d1 = instance.distance_to_nearest(lon, lat, strategy=gshhg.Andoyer())
-    d2 = instance.distance_to_nearest(lon, lat, strategy=gshhg.Haversine())
-    d3 = instance.distance_to_nearest(lon, lat, strategy=gshhg.Thomas())
-    d4 = instance.distance_to_nearest(lon, lat, strategy=gshhg.Vincenty())
+    d1 = instance.distance_to_nearest(lon, lat, strategy="andoyer")
+    d2 = instance.distance_to_nearest(lon, lat, strategy="haversine")
+    d3 = instance.distance_to_nearest(lon, lat, strategy="thomas")
+    d4 = instance.distance_to_nearest(lon, lat, strategy="vincenty")
 
     assert np.all(d1 != d2)
     assert np.all(d1 != d3)

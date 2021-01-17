@@ -108,6 +108,17 @@ class GSHHG(core.GSHHG):
             str(filename) if isinstance(filename, pathlib.Path) else filename,
             width, height)
 
+    def distance_to_nearest(self,
+                            lon: numpy.ndarray,
+                            lat: numpy.ndarray,
+                            strategy: Optional[str] = None,
+                            num_threads: int = 0):
+        return super().distance_to_nearest(lon,
+                                           lat,
+                                           strategy=self._get_strategy(
+                                               strategy or 'vincenty'),
+                                           num_threads=num_threads)
+
     def __reduce__(self) -> Tuple[Any, ...]:
         return GSHHG, (self.dirname, self.resolution, self.levels, self.bbox)
 
