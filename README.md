@@ -101,8 +101,11 @@ Once loaded in memory, it's possible to view the polygons loaded in memory. This
 is useful for debugging possible problems with the handled data.
 
 ```python
-instance.to_svg("[intermediate.svg](docs/intermediate.svg)")
+instance.to_svg("intermediate.svg")
 ```
+
+The created SVG file can be viewed in a browser. The resulting file for the
+intermediate resolution is available [here](docs/intermediate.svg).
 
 ## Land/sea mask
 For a set of coordinates expressed in degrees, it is possible to calculate the
