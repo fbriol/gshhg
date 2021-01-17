@@ -205,7 +205,7 @@ def main():
         author='CNES/CLS',
         license="BSD License",
         ext_modules=[CMakeExtension(name="gshhg.core")],
-        setup_requires=[],
+        setup_requires=["pybind11"],
         install_requires=["numpy", "dask", "xarray"],
         tests_require=["numpy", "dask", "xarray"],
         package_dir={'': 'src'},
