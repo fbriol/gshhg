@@ -172,7 +172,7 @@ class GSHHG(core.GSHHG):
                                                                dtype="float64")
         return numpy.arange(-180, 180, step,
                             dtype="float64"), numpy.arange(-90,
-                                                           90,
+                                                           90 + step,
                                                            step,
                                                            dtype="float64")
 
