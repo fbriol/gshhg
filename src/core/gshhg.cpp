@@ -11,7 +11,8 @@ namespace gshhg {
 GSHHG::GSHHG(const std::string& dirname,
              const std::optional<std::string>& resolution,
              const std::optional<std::vector<int>>& levels,
-             std::optional<Box> bbox): bbox_(std::move(bbox)) {
+             std::optional<Box> bbox)
+    : bbox_(std::move(bbox)) {
   auto resolution_ident =
       parse_resolution_string(resolution.value_or("intermediate"));
   auto resolution_code = std::string(1, static_cast<char>(resolution_ident));
@@ -46,6 +47,17 @@ GSHHG::GSHHG(const std::string& dirname,
   rtree_.reset(new RTree(points));
 }
 
+// Calculate the ECEF coordinates of the polygon points
+static inline auto transform_polygon_points(const Polygon& polygon,
+                                            std::vector<Cartesian>& points)
+    -> void {
+  for (const auto& point : polygon.outer()) {
+    const auto ecef = geodetic_2_cartesian(
+        geodetic_2_radian(GeodeticDegree(point.get<0>(), point.get<1>())));
+    points.emplace_back(ecef);
+  }
+}
+
 void GSHHG::load_shp(const std::string& filename, const uint8_t level,
                      const bool patch, std::vector<Cartesian>& points) {
   SHPHandle handle = SHPOpen(filename.c_str(), "rb");
@@ -75,9 +87,6 @@ void GSHHG::load_shp(const std::string& filename, const uint8_t level,
       // Current polygon read
       auto polygon = Polygon();
 
-      // Cartesian points read
-      auto polygon_points = std::vector<Cartesian>();
-
       // Skim over vertices
       for (int jx = 0; jx < shape->nVertices; ++jx) {
         // Level 5 at full resolution must be patched(skip the two first points
@@ -87,10 +96,7 @@ void GSHHG::load_shp(const std::string& filename, const uint8_t level,
           y++;
           continue;
         }
-        boost::geometry::append(polygon, Point(*x, *y));
-        auto ecef =
-            geodetic_2_cartesian(geodetic_2_radian(GeodeticDegree(*x++, *y++)));
-        polygon_points.emplace_back(ecef);
+        boost::geometry::append(polygon, Point(*x++, *y++));
       }
 
       // Level 5 at full resolution must be patched (close the polygon).
@@ -99,19 +105,28 @@ void GSHHG::load_shp(const std::string& filename, const uint8_t level,
         boost::geometry::append(polygon, Point(0, -90));
       }
 
-      // Calculate the envelope of the current polygon
+      // Envelope of the current polygon
       auto envelope = Box();
-      boost::geometry::envelope(polygon, envelope);
 
-      // If the read polygon is located in the selected are
-      if (bbox_.has_value() ? boost::geometry::intersects(bbox_.value(), envelope)
-                          : true) {
-        // We store the current polygon and its indexes
+      // Is it necessary to make a geographical selection?
+      if (bbox_.has_value()) {
+        auto intersection = std::deque<Polygon>();
+        boost::geometry::intersection(polygon, bbox_.value(), intersection);
+        // If the read polygon is located in the geographical selection
+        if (!intersection.empty()) {
+          for (auto&& item : intersection) {
+            transform_polygon_points(item, points);
+            boost::geometry::envelope(item, envelope);
+            polygons_.emplace_back(
+                PolygonIndex{std::move(item), std::move(envelope), level});
+          }
+        }
+      } else {
+        // We store the current polygon and its points
+        transform_polygon_points(polygon, points);
+        boost::geometry::envelope(polygon, envelope);
         polygons_.emplace_back(
             PolygonIndex{std::move(polygon), std::move(envelope), level});
-        points.insert(points.end(),
-                      std::make_move_iterator(polygon_points.begin()),
-                      std::make_move_iterator(polygon_points.end()));
       }
     }
     SHPDestroyObject(shape);
@@ -137,7 +152,8 @@ void GSHHG::to_svg(const std::string& filename, const int width,
                 std::to_string(rgb & 0xFFU);
     mapper.add(item.polygon);
     mapper.map(item.polygon, "fill-opacity:0.5;fill:rgb(" + code +
-                                 ");stroke:rgb(" + code + ")");
+                                 ");stroke:rgb(" + code + ");" +
+                                 "stroke-width:0.2");
   }
 }
 
