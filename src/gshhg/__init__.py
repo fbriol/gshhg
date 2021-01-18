@@ -212,33 +212,6 @@ class GSHHG(core.GSHHG):
                for iy in range(len(ychunks)) for ix in range(len(xchunks))}
         return lon, lat, dask.array.Array(dsk, name, chunks, dtype)
 
-    def grid_mapping_mask(self,
-                          step: float,
-                          blocksize: Optional[int] = None,
-                          num_threads: int = 1) -> xarray.Dataset:
-        lon, lat, array = self._dask_array(_grid_mapping_mask,
-                                           numpy.dtype("int8"),
-                                           "grid_mapping_mask",
-                                           step,
-                                           blocksize,
-                                           num_threads=num_threads)
-        coords, crs = self._dataset_template(lon, lat)
-        data_vars = collections.OrderedDict(
-            crs=crs,
-            mask=xarray.DataArray(
-                array,
-                dims=("lat", "lon"),
-                attrs=collections.OrderedDict(
-                    cell_methods="lat: point lon: point",
-                    coordinates="lat lon",
-                    flag_meanings=
-                    "ocean land lake island-in-lake pond-in-island "
-                    "antartica-ice antartica-land",
-                    flag_values=numpy.arange(0, 7, dtype=numpy.uint8),
-                    long_name="land sea mask",
-                    valid_range=numpy.array([0, 6], dtype=numpy.uint8))))
-
-        return xarray.Dataset(data_vars=data_vars, coords=coords)
 
     def grid_mapping_mask(self,
                           step: float,
