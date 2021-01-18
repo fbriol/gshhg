@@ -45,14 +45,12 @@ class Vincenty(core.Vincenty):
 def _grid_mapping_mask(lon: numpy.array,
                        lat: numpy.array,
                        dirname: Union[str, pathlib.Path],
-                       resolution: Optional[str] = None,
-                       levels: Optional[List[int]] = None,
+                       resolution: Optional[str],
+                       levels: Optional[List[int]],
+                       bbox: Tuple[float, float, float, float],
                        kwargs=None) -> numpy.ndarray:
     kwargs = kwargs or dict()
-    instance = core.GSHHG(dirname,
-                          resolution,
-                          levels,
-                          bbox=(lon.min(), lat.min(), lon.max(), lat.max()))
+    instance = core.GSHHG(dirname, resolution, levels, bbox=bbox)
     mx, my = numpy.meshgrid(lon, lat)
     return instance.mask(mx.flatten(), my.flatten(),
                          **kwargs).reshape(mx.shape)
@@ -61,14 +59,12 @@ def _grid_mapping_mask(lon: numpy.array,
 def _grid_mapping_distance_to_nearest(lon: numpy.array,
                                       lat: numpy.array,
                                       dirname: Union[str, pathlib.Path],
-                                      resolution: Optional[str] = None,
-                                      levels: Optional[List[int]] = None,
+                                      resolution: Optional[str],
+                                      levels: Optional[List[int]],
+                                      bbox: Tuple[float, float, float, float],
                                       kwargs=None) -> numpy.ndarray:
     kwargs = kwargs or dict()
-    instance = core.GSHHG(dirname,
-                          resolution,
-                          levels,
-                          bbox=(lon.min(), lat.min(), lon.max(), lat.max()))
+    instance = core.GSHHG(dirname, resolution, levels, bbox=bbox)
     mx, my = numpy.meshgrid(lon, lat)
     return instance.distance_to_nearest(mx.flatten(), my.flatten(),
                                         **kwargs).reshape(mx.shape)
@@ -77,12 +73,12 @@ def _grid_mapping_distance_to_nearest(lon: numpy.array,
 class GSHHG(core.GSHHG):
     __slots__ = ("dirname", "resolution", "levels", "bbox")
 
-    def __init__(self,
-                 dirname: Union[str, pathlib.Path],
-                 resolution: Optional[str] = None,
-                 levels: Optional[List[int]] = None,
-                 bbox: Optional[Tuple[float, float, float, float]] = None
-                 ) -> None:
+    def __init__(
+            self,
+            dirname: Union[str, pathlib.Path],
+            resolution: Optional[str] = None,
+            levels: Optional[List[int]] = None,
+            bbox: Optional[Tuple[float, float, float, float]] = None) -> None:
         if isinstance(dirname, str):
             dirname = pathlib.Path(dirname)
         if not dirname.exists():
@@ -124,7 +120,7 @@ class GSHHG(core.GSHHG):
 
     @staticmethod
     def _dataset_template(
-            lon: numpy.ndarray, lat: numpy.ndarray
+        lon: numpy.ndarray, lat: numpy.ndarray
     ) -> Tuple[collections.OrderedDict, xarray.DataArray]:
         coords = collections.OrderedDict(lon=xarray.DataArray(
             lon,
@@ -164,10 +160,11 @@ class GSHHG(core.GSHHG):
     def _lon_lat_arange(self, step: float) -> Tuple[numpy.array, numpy.array]:
         if self.bbox is not None:
             return numpy.arange(self.bbox[0],
-                                self.bbox[2],
+                                self.bbox[2] + step,
                                 step,
                                 dtype="float64"), numpy.arange(self.bbox[1],
-                                                               self.bbox[3],
+                                                               self.bbox[3] +
+                                                               step,
                                                                step,
                                                                dtype="float64")
         return numpy.arange(-180, 180, step,
@@ -176,14 +173,14 @@ class GSHHG(core.GSHHG):
                                                            step,
                                                            dtype="float64")
 
-    def _dask_array(self,
-                    callable: Callable,
-                    dtype: numpy.dtype,
-                    name: str,
-                    step: float,
-                    blocksize: Optional[int] = None,
-                    **kwargs
-                    ) -> Tuple[numpy.ndarray, numpy.ndarray, xarray.Dataset]:
+    def _dask_array(
+            self,
+            function: Callable,
+            dtype: numpy.dtype,
+            name: str,
+            step: float,
+            blocksize: Optional[int] = None,
+            **kwargs) -> Tuple[numpy.ndarray, numpy.ndarray, xarray.Dataset]:
         lon, lat = self._lon_lat_arange(step)
         nx, ny = len(lon), len(lat)
 
@@ -205,13 +202,23 @@ class GSHHG(core.GSHHG):
 
         ychunks, xchunks = chunks
 
-        dsk = {(name, iy, ix):
-               (callable, lon[sum(xchunks[0:ix]):sum(xchunks[0:ix + 1])],
-                lat[sum(ychunks[0:iy]):sum(ychunks[0:iy + 1])],
-                str(self.dirname), self.resolution, self.levels, kwargs)
-               for iy in range(len(ychunks)) for ix in range(len(xchunks))}
-        return lon, lat, dask.array.Array(dsk, name, chunks, dtype)
+        dsk = {}
+        for iy in range(len(ychunks)):
+            y_slice = lat[sum(ychunks[0:iy]):sum(ychunks[0:iy + 1])]
+            y_max = max(y_slice[-1] + step, lat[-1])
+            y_min = min(y_slice[0] - step, lat[0])
 
+            for ix in range(len(xchunks)):
+                x_slice = lon[sum(xchunks[0:ix]):sum(xchunks[0:ix + 1])]
+                x_max = max(x_slice[-1] + step, lon[-1])
+                x_min = min(x_slice[0] - step, lon[0])
+
+                dsk[(name, iy, ix)] = (function, x_slice, y_slice,
+                                       str(self.dirname), self.resolution,
+                                       self.levels, (x_min, y_min, x_max,
+                                                     y_max), kwargs)
+
+        return lon, lat, dask.array.Array(dsk, name, chunks, dtype)
 
     def grid_mapping_mask(self,
                           step: float,
@@ -253,11 +260,11 @@ class GSHHG(core.GSHHG):
             return Vincenty()
         raise ValueError("unknown strategy: " + repr(strategy))
 
-    def grid_mapping_distance_to_nearest(self,
-                                         step: float,
-                                         strategy: Optional[str] = None,
-                                         num_threads: int = 0
-                                         ) -> xarray.Dataset:
+    def grid_mapping_distance_to_nearest(
+            self,
+            step: float,
+            strategy: Optional[str] = None,
+            num_threads: int = 0) -> xarray.Dataset:
         strategy = strategy or 'vincenty'
 
         lon, lat, array = self._dask_array(
