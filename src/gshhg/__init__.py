@@ -301,7 +301,7 @@ class GSHHG(core.GSHHG):
         data_vars = collections.OrderedDict(
             crs=crs,
             distance=xarray.DataArray(
-                array,
+                array * 1e-3,
                 dims=("lat", "lon"),
                 attrs=collections.OrderedDict(
                     cell_methods="lat: point lon: point",
