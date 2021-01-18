@@ -11,7 +11,7 @@ namespace gshhg {
 GSHHG::GSHHG(const std::string& dirname,
              const std::optional<std::string>& resolution,
              const std::optional<std::vector<int>>& levels,
-             const std::optional<Box>& box) {
+             std::optional<Box> bbox): bbox_(std::move(bbox)) {
   auto resolution_ident =
       parse_resolution_string(resolution.value_or("intermediate"));
   auto resolution_code = std::string(1, static_cast<char>(resolution_ident));
@@ -41,17 +41,16 @@ GSHHG::GSHHG(const std::string& dirname,
     // Load the hierarchical dataset selected
     load_shp(path.string(), level,
              // Level 5 at full resolution must be patched.
-             resolution_ident == Resolution::kFull && level == 5, box, points);
+             resolution_ident == Resolution::kFull && level == 5, points);
   }
   rtree_.reset(new RTree(points));
 }
 
 void GSHHG::load_shp(const std::string& filename, const uint8_t level,
-                     const bool patch, const std::optional<Box>& box,
-                     std::vector<Cartesian>& points) {
+                     const bool patch, std::vector<Cartesian>& points) {
   SHPHandle handle = SHPOpen(filename.c_str(), "rb");
   if (handle == nullptr) {
-    throw std::system_error(ENOENT , std::system_category(), filename);
+    throw std::system_error(ENOENT, std::system_category(), filename);
   }
   int shape_types, entities;
   double min_bound[4], max_bound[4];
@@ -105,7 +104,7 @@ void GSHHG::load_shp(const std::string& filename, const uint8_t level,
       boost::geometry::envelope(polygon, envelope);
 
       // If the read polygon is located in the selected are
-      if (box.has_value() ? boost::geometry::intersects(*box, envelope)
+      if (bbox_.has_value() ? boost::geometry::intersects(bbox_.value(), envelope)
                           : true) {
         // We store the current polygon and its indexes
         polygons_.emplace_back(
@@ -127,7 +126,7 @@ void GSHHG::to_svg(const std::string& filename, const int width,
   svg.open(filename.c_str());
 
   boost::geometry::svg_mapper<Point> mapper(svg, width, height);
-  mapper.add(Box({-180, -90}, {180, 90}));
+  mapper.add(bbox_.value_or(Box({-180, -90}, {180, 90})));
 
   unsigned int index = 0;
 

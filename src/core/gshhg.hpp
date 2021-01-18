@@ -25,7 +25,7 @@ class GSHHG {
   GSHHG(const std::string& dirname,
         const std::optional<std::string>& resolution,
         const std::optional<std::vector<int>>& levels,
-        const std::optional<Box>& box);
+        std::optional<Box> bbox);
 
   // Gets the number of points handled
   [[nodiscard]] inline auto points() const -> size_t { return rtree_->size(); }
@@ -101,7 +101,7 @@ class GSHHG {
 
   // Load the shapefile selected
   void load_shp(const std::string& filename, uint8_t level, bool patch,
-                const std::optional<Box>& box, std::vector<Cartesian>& points);
+                std::vector<Cartesian>& points);
 
   [[nodiscard]] inline auto nearest(const Cartesian& point) const -> Cartesian {
     auto result = std::vector<Cartesian>();
@@ -111,9 +111,11 @@ class GSHHG {
     return result.at(0);
   }
 
+  // Bounding box loaded
+  std::optional<Box> bbox_;
+
   // List of polygons read: envelope, polygon and level
   std::vector<PolygonIndex> polygons_{};
-
   using RTree =
       boost::geometry::index::rtree<Cartesian,
                                     boost::geometry::index::rstar<16>>;
