@@ -1,0 +1,36 @@
+{% set name = "gshhg" %}
+{% set version = "1.0.0" %}
+
+package:
+  name: {{ name|lower }}
+  version: {{ version }}
+
+source:
+    path: .
+
+build:
+  number: 0
+  script: {{ PYTHON }} -m pip install . -vv
+  skip: true  # [linux32 or win32 or py<36]
+
+requirements:
+  build:
+    - {{ compiler('cxx') }}  # [linux or osx]
+    - vs2017_win-64          # [win]
+    - cmake
+  host:
+    - python
+    - setuptools
+    - boost-cpp
+    - shapelib
+    - pybind11
+  run:
+    - {{ pin_compatible('numpy') }}
+    - python
+    - shapelib
+    - dask
+    - xarray
+
+test:
+  imports:
+    - gshhg.core
