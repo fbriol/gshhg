@@ -17,7 +17,7 @@ distribution of the software without specific, written prior permission.
  The GSHHG package may be included in a bundled distribution of software
 for which a fee may be charged. The University of Hawaii (UH) and the
 National Oceanic and Atmospheric Administration (NOAA) make no
-representations about the suitability of this software for any purpose. 
+representations about the suitability of this software for any purpose.
 It is provided "as is" without expressed or implied warranty.  It is
 provided with no support and without obligation on the part of UH or
 NOAA, to assist in its use, correction, modification, or enhancement.

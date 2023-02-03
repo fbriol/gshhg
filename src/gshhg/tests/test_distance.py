@@ -1,6 +1,8 @@
 import pickle
+
 import pytest
-from gshhg import Spheroid, Andoyer, Haversine, Thomas, Vincenty
+
+from gshhg import Andoyer, Haversine, Spheroid, Thomas, Vincenty
 
 
 def test_spheroid():

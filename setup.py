@@ -1,55 +1,68 @@
 """This script is the entry point for building, distributing and installing
 this module using distutils/setuptools."""
-import distutils.command.build
 import os
 import pathlib
 import platform
-import setuptools
-import setuptools.command.build_ext
-import setuptools.command.install
 import sys
 import sysconfig
+
+import packaging.version
+import setuptools
+import setuptools.command.build_ext
 
 # Check Python requirement
 MAJOR = sys.version_info[0]
 MINOR = sys.version_info[1]
 if not (MAJOR >= 3 and MINOR >= 6):
-    raise RuntimeError("Python %d.%d is not supported, "
-                       "you need at least Python 3.6." % (MAJOR, MINOR))
+    raise RuntimeError('Python %d.%d is not supported, '
+                       'you need at least Python 3.6.' % (MAJOR, MINOR))
 
 # Working directory
 WORKING_DIRECTORY = pathlib.Path(__file__).parent.absolute()
 
 
-def build_dirname(extname=None):
-    """Returns the name of the build directory"""
-    extname = '' if extname is None else os.sep.join(extname.split(".")[:-1])
-    return str(
-        pathlib.Path(WORKING_DIRECTORY, "build",
-                     "lib.%s-%d.%d" % (sysconfig.get_platform(), MAJOR, MINOR),
-                     extname))
+def distutils_dirname(prefix=None, extname=None) -> pathlib.Path:
+    """Returns the name of the build directory."""
+    prefix = 'lib' or prefix
+    extname = '' if extname is None else os.sep.join(extname.split('.')[:-1])
+    if packaging.version.parse(
+            setuptools.__version__) >= packaging.version.parse('62.1'):
+        return pathlib.Path(
+            WORKING_DIRECTORY, 'build', f'{prefix}.{sysconfig.get_platform()}-'
+            f'{sys.implementation.cache_tag}', extname)
+    return pathlib.Path(
+        WORKING_DIRECTORY, 'build', f'{prefix}.{sysconfig.get_platform()}-'
+        f'{sys.version_info[0]}.{sys.version_info[1]}', extname)
 
 
 class CMakeExtension(setuptools.Extension):
-    """Python extension to build"""
+    """Python extension to build."""
+
     def __init__(self, name):
-        super(CMakeExtension, self).__init__(name, sources=[])
+        super().__init__(name, sources=[])
 
 
 class BuildExt(setuptools.command.build_ext.build_ext):
-    """Build the Python extension using cmake"""
+    """Build the Python extension using cmake."""
 
-    #: Preferred C++ compiler
-    CXX_COMPILER = None
+    user_options = setuptools.command.build_ext.build_ext.user_options
+    user_options += [
+        ('boost-root=', None, 'Preferred Boost installation prefix'),
+        ('cxx-compiler=', None, 'Preferred C++ compiler'),
+        ('reconfigure', None, 'Forces CMake to reconfigure this project')
+    ]
 
-    #: Preferred BOOST root
-    BOOST_ROOT = None
-
-    #: Run CMake to configure this project
-    RECONFIGURE = None
+    def initialize_options(self) -> None:
+        """Set default values for all the options that this command
+        supports."""
+        super().initialize_options()
+        self.boost_root = None
+        self.conda_forge = None
+        self.cxx_compiler = None
+        self.reconfigure = None
 
     def run(self):
-        """A command's raison d'etre: carry out the action"""
+        """Run the command."""
         for ext in self.extensions:
             self.build_cmake(ext)
         super().run()
@@ -61,7 +74,8 @@ class BuildExt(setuptools.command.build_ext.build_ext):
         if not result:
             try:
                 # pylint: disable=unused-import
-                import conda
+                import conda  # noqa: F401
+
                 # pylint: enable=unused-import
             except ImportError:
                 result = False
@@ -71,20 +85,20 @@ class BuildExt(setuptools.command.build_ext.build_ext):
 
     @staticmethod
     def boost():
-        """Get the default boost path in Anaconda's environnement."""
+        """Get the default boost path in Anaconda's environment."""
         # Do not search system for Boost & disable the search for boost-cmake
-        boost_option = "-DBoost_NO_SYSTEM_PATHS=TRUE " \
-            "-DBoost_NO_BOOST_CMAKE=TRUE"
+        boost_option = '-DBoost_NO_SYSTEM_PATHS=TRUE ' \
+            '-DBoost_NO_BOOST_CMAKE=TRUE'
         boost_root = sys.prefix
-        if pathlib.Path(boost_root, "include", "boost").exists():
-            return "{boost_option} -DBOOST_ROOT={boost_root}".format(
+        if pathlib.Path(boost_root, 'include', 'boost').exists():
+            return '{boost_option} -DBOOST_ROOT={boost_root}'.format(
                 boost_root=boost_root, boost_option=boost_option).split()
-        boost_root = pathlib.Path(sys.prefix, "Library", "include")
+        boost_root = pathlib.Path(sys.prefix, 'Library', 'include')
         if not boost_root.exists():
             raise RuntimeError(
-                "Unable to find the Boost library in the conda distribution "
-                "used.")
-        return "{boost_option} -DBoost_INCLUDE_DIR={boost_root}".format(
+                'Unable to find the Boost library in the conda distribution '
+                'used.')
+        return '{boost_option} -DBoost_INCLUDE_DIR={boost_root}'.format(
             boost_root=boost_root, boost_option=boost_option).split()
 
     def set_cmake_user_options(self):
@@ -92,30 +106,33 @@ class BuildExt(setuptools.command.build_ext.build_ext):
         is_conda = self.is_conda()
         result = []
 
-        if self.CXX_COMPILER is not None:
-            result.append("-DCMAKE_CXX_COMPILER=" + self.CXX_COMPILER)
+        if self.cxx_compiler is not None:
+            result.append('-DCMAKE_CXX_COMPILER=' + self.cxx_compiler)
 
-        if self.BOOST_ROOT is not None:
-            result.append("-DBOOSTROOT=" + self.BOOST_ROOT)
+        if self.boost_root is not None:
+            result.append('-DBOOSTROOT=' + self.boost_root)
         elif is_conda:
-            result += self.boost()
+            cmake_variable = self.boost()
+            if cmake_variable:
+                result += cmake_variable
 
         return result
 
     def build_cmake(self, ext):
-        """Execute cmake to build the Python extension"""
+        """Execute cmake to build the Python extension."""
         # These dirs will be created in build_py, so if you don't have
         # any python sources to bundle, the dirs will be missing
         build_temp = pathlib.Path(WORKING_DIRECTORY, self.build_temp)
         build_temp.mkdir(parents=True, exist_ok=True)
-        extdir = build_dirname(ext.name)
+        extdir = str(
+            pathlib.Path(self.get_ext_fullpath(ext.name)).parent.resolve())
 
         cfg = 'Debug' if self.debug else 'Release'
 
         cmake_args = [
-            "-DCMAKE_LIBRARY_OUTPUT_DIRECTORY=" + str(extdir),
-            "-DPYTHON_EXECUTABLE=" + sys.executable,
-            "-DCMAKE_PREFIX_PATH=" + sys.prefix
+            '-DCMAKE_LIBRARY_OUTPUT_DIRECTORY=' + str(extdir),
+            '-DPYTHON_EXECUTABLE=' + sys.executable,
+            '-DCMAKE_PREFIX_PATH=' + sys.prefix
         ] + self.set_cmake_user_options()
 
         build_args = ['--config', cfg]
@@ -137,15 +154,15 @@ class BuildExt(setuptools.command.build_ext.build_ext):
                 build_args += ['/verbosity:n']
 
         if self.verbose:
-            build_args.insert(0, "--verbose")
+            build_args.insert(0, '--verbose')
 
         os.chdir(str(build_temp))
 
         # Has CMake ever been executed?
-        if pathlib.Path(build_temp, "CMakeFiles",
-                        "TargetDirectories.txt").exists():
+        if pathlib.Path(build_temp, 'CMakeFiles',
+                        'TargetDirectories.txt').exists():
             # The user must force the reconfiguration
-            configure = self.RECONFIGURE is not None
+            configure = self.reconfigure is not None
         else:
             configure = True
 
@@ -157,65 +174,35 @@ class BuildExt(setuptools.command.build_ext.build_ext):
         os.chdir(str(WORKING_DIRECTORY))
 
 
-class Build(distutils.command.build.build):
-    """Build everything needed to install"""
-    user_options = distutils.command.build.build.user_options
-    user_options += [
-        ('boost-root=', None, 'Preferred Boost installation prefix'),
-        ('cxx-compiler=', None, 'Preferred C++ compiler'),
-        ('reconfigure', None, 'Forces CMake to reconfigure this project')
-    ]
-
-    def initialize_options(self):
-        """Set default values for all the options that this command supports"""
-        super().initialize_options()
-        self.boost_root = None
-        self.cxx_compiler = None
-        self.reconfigure = None
-
-    def run(self):
-        """A command's raison d'etre: carry out the action"""
-        if self.boost_root is not None:
-            BuildExt.BOOST_ROOT = self.boost_root
-        if self.cxx_compiler is not None:
-            BuildExt.CXX_COMPILER = self.cxx_compiler
-        if self.reconfigure is not None:
-            BuildExt.RECONFIGURE = True
-        super().run()
-
-
 def main():
     setuptools.setup(
         name='gshhg',
         # version=revision(),
         classifiers=[
-            "Development Status :: 3 - Alpha",
-            "Topic :: Scientific/Engineering :: Physics",
-            "License :: OSI Approved :: BSD License",
-            "Natural Language :: English", "Operating System :: POSIX",
-            "Operating System :: MacOS",
-            "Operating System :: Microsoft :: Windows",
-            "Programming Language :: Python :: 3.6",
-            "Programming Language :: Python :: 3.7",
-            "Programming Language :: Python :: 3.8"
-            "Programming Language :: Python :: 3.9"
+            'Development Status :: 3 - Alpha',
+            'Topic :: Scientific/Engineering :: Physics',
+            'License :: OSI Approved :: BSD License',
+            'Natural Language :: English', 'Operating System :: POSIX',
+            'Operating System :: MacOS',
+            'Operating System :: Microsoft :: Windows',
+            'Programming Language :: Python :: 3.8'
+            'Programming Language :: Python :: 3.9'
+            'Programming Language :: Python :: 3.10'
+            'Programming Language :: Python :: 3.11'
         ],
         description='TODO',
         url='TODO',
         author='CNES/CLS',
-        license="BSD License",
-        ext_modules=[CMakeExtension(name="gshhg.core")],
-        setup_requires=["pybind11"],
-        install_requires=["numpy", "dask", "xarray"],
-        tests_require=["numpy", "dask", "xarray"],
+        license='BSD License',
+        ext_modules=[CMakeExtension(name='gshhg.core')],
+        setup_requires=['pybind11'],
+        install_requires=['numpy', 'dask', 'xarray'],
+        tests_require=['numpy', 'dask', 'xarray'],
         package_dir={'': 'src'},
-        packages=setuptools.find_packages(where="src"),
-        cmdclass={
-            'build': Build,
-            'build_ext': BuildExt
-        },
+        packages=setuptools.find_packages(where='src'),
+        cmdclass={'build_ext': BuildExt},
         zip_safe=False)
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()

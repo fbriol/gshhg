@@ -74,14 +74,14 @@ import gsshg
 shorelines = gsshg("/Users/anonymous/Downloads/gshhg-shp-2.3.7/GSHHS_shp")
 ```
 
-The contructor accepts the following options:    
+The constructor accepts the following options:
 * `resolution`, specifies the geographic resolution to use:
   * `crude`
   * `low`
   * `intermediate` (default value)
   * `high`
   * `full`
-* `levels`, a list of integers, which can contain values from 1 to 6, 
+* `levels`, a list of integers, which can contain values from 1 to 6,
   specifying the hierarchical levels to be loaded:
   * 1: boundary between land and ocean, except Antarctica.
   * 2: boundary between lake and land.
@@ -89,7 +89,7 @@ The contructor accepts the following options:
   * 4: boundary between pond-in-island and island.
   * 5: boundary between Antarctica ice and ocean.
   * 6: boundary between Antarctica grounding-line and ocean.
-  
+
   If `levels` is not set, all levels are loaded.
 * `bbox`, a tuple of 4 floats (minimum longitude, minimum latitude, maximum
   longitude, and maximum latitude) defines the geographical area to be
