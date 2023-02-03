@@ -19,11 +19,12 @@ requirements:
     - vs2017_win-64          # [win]
     - cmake
   host:
+    - boost-cpp
+    - packaging
+    - pybind11
     - python
     - setuptools
-    - boost-cpp
     - shapelib
-    - pybind11
   run:
     - {{ pin_compatible('numpy') }}
     - python
